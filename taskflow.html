@@ -1,0 +1,1327 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TaskFlow - Planejador Circadiano Inteligente</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: { sans: ['Inter', 'sans-serif'] },
+                    colors: {
+                        brand: { 50: '#f0f7ff', 100: '#e0effe', 500: '#3b82f6', 600: '#2563eb', 700: '#1d4ed8' }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: #f1f5f9; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 9999px; }
+        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+        details > summary { list-style: none; }
+        details > summary::-webkit-details-marker { display: none; }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-800 font-sans min-h-screen pb-24 md:pb-12">
+
+    <!-- HEADER -->
+    <header class="bg-white border-b border-slate-200 sticky top-0 z-30 shadow-sm">
+        <div class="max-w-5xl mx-auto px-4 py-3.5 flex items-center justify-between">
+            <div class="flex items-center gap-3">
+                <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-brand-600 to-indigo-600 flex items-center justify-center text-white font-bold text-xl shadow-md shadow-brand-500/20">
+                    <i class="fa-solid fa-brain"></i>
+                </div>
+                <div>
+                    <h1 class="text-xl font-bold text-slate-900 leading-tight">TaskFlow <span class="text-xs px-2 py-0.5 rounded-md bg-brand-50 text-brand-600 font-semibold border border-brand-100">IA Circadiana</span></h1>
+                    <p class="text-xs text-slate-500" id="user-welcome-display">Carregando perfil...</p>
+                </div>
+            </div>
+            <div class="flex items-center gap-2">
+                <span id="storage-status" class="hidden md:inline-flex items-center gap-1.5 text-[11px] font-medium px-2.5 py-1 rounded-full border"></span>
+                <button onclick="exportData()" title="Exportar backup (.json)" class="w-9 h-9 flex items-center justify-center text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl border border-slate-200">
+                    <i class="fa-solid fa-download"></i>
+                </button>
+                <button onclick="document.getElementById('import-file').click()" title="Importar backup (.json)" class="w-9 h-9 flex items-center justify-center text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl border border-slate-200">
+                    <i class="fa-solid fa-upload"></i>
+                </button>
+                <input type="file" id="import-file" accept="application/json,.json" class="hidden" onchange="importData(event)">
+                <button onclick="openUserModal()" class="flex items-center gap-2 text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 px-3 py-2 rounded-xl transition-all border border-slate-200">
+                    <i class="fa-solid fa-user-gear text-brand-600"></i>
+                    <span class="hidden sm:inline">Perfil / Horários</span>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <main class="max-w-5xl mx-auto px-4 pt-6 space-y-6">
+
+        <!-- STATS -->
+        <section class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div class="bg-white rounded-2xl p-4 border border-emerald-100 shadow-sm flex items-center gap-4">
+                <div class="w-12 h-12 rounded-xl bg-emerald-100 text-emerald-600 flex items-center justify-center text-xl shrink-0"><i class="fa-solid fa-circle-check"></i></div>
+                <div>
+                    <p class="text-xs font-medium text-slate-500">Blocos Concluídos</p>
+                    <h3 class="text-2xl font-bold text-slate-800" id="stat-completed">0</h3>
+                </div>
+            </div>
+            <div class="bg-white rounded-2xl p-4 border border-blue-100 shadow-sm flex items-center gap-4">
+                <div class="w-12 h-12 rounded-xl bg-blue-100 text-blue-600 flex items-center justify-center text-xl shrink-0"><i class="fa-solid fa-clock"></i></div>
+                <div>
+                    <p class="text-xs font-medium text-slate-500">A Fazer</p>
+                    <h3 class="text-2xl font-bold text-slate-800" id="stat-pending">0</h3>
+                </div>
+            </div>
+            <div class="bg-white rounded-2xl p-4 border border-amber-100 shadow-sm flex items-center gap-4">
+                <div class="w-12 h-12 rounded-xl bg-amber-100 text-amber-600 flex items-center justify-center text-xl shrink-0"><i class="fa-solid fa-triangle-exclamation"></i></div>
+                <div>
+                    <p class="text-xs font-medium text-slate-500">Deixadas <span class="text-slate-400">(atrasadas ou sem espaço)</span></p>
+                    <h3 class="text-2xl font-bold text-slate-800" id="stat-overdue">0</h3>
+                </div>
+            </div>
+        </section>
+
+        <!-- DIAS DA SEMANA -->
+        <section class="bg-white rounded-2xl border border-slate-200 p-3 shadow-sm">
+            <div class="flex items-center justify-between mb-2 px-1">
+                <span class="text-xs font-bold text-slate-400 uppercase tracking-wider">Dia da Semana</span>
+                <span class="text-xs text-slate-500" id="useful-hours-badge"></span>
+            </div>
+            <div class="grid grid-cols-7 gap-1.5 sm:gap-2" id="day-tabs"></div>
+        </section>
+
+        <!-- CABEÇALHO DO DIA -->
+        <section class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
+            <div>
+                <h2 class="text-lg font-bold text-slate-800 flex items-center gap-2 flex-wrap">
+                    <span id="selected-day-title">Segunda-feira</span>
+                    <span id="optimized-tag" class="hidden text-xs bg-emerald-100 text-emerald-700 px-2.5 py-0.5 rounded-full font-medium"><i class="fa-solid fa-bolt"></i> Fluxo Otimizado</span>
+                </h2>
+                <p class="text-xs text-slate-500">Cadastre atividades fixas ou variáveis e clique em "Organizar" para gerar o cronograma.</p>
+            </div>
+            <div class="flex items-center gap-2 w-full sm:w-auto flex-wrap">
+                <button onclick="openActivityModal()" class="flex-1 sm:flex-none inline-flex items-center justify-center gap-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold px-4 py-2.5 rounded-xl border border-slate-200 transition-all">
+                    <i class="fa-solid fa-plus text-brand-600"></i> Nova Atividade
+                </button>
+                <button onclick="organizeWeek()" class="flex-1 sm:flex-none inline-flex items-center justify-center gap-2 bg-white hover:bg-brand-50 text-brand-700 text-xs font-semibold px-4 py-2.5 rounded-xl border border-brand-100 transition-all">
+                    <i class="fa-solid fa-calendar-week"></i> Semana
+                </button>
+                <button onclick="organizeDayFlow()" class="flex-1 sm:flex-none inline-flex items-center justify-center gap-2 bg-gradient-to-r from-brand-600 to-indigo-600 hover:from-brand-700 hover:to-indigo-700 text-white text-xs font-bold px-5 py-2.5 rounded-xl shadow-lg shadow-brand-500/20 active:scale-95 transition-all">
+                    <i class="fa-solid fa-wand-magic-sparkles"></i> Organizar Dia
+                </button>
+            </div>
+        </section>
+
+        <!-- CRONOGRAMA -->
+        <section id="timeline-section">
+            <div id="timeline" class="space-y-2"></div>
+        </section>
+
+        <!-- ESTADO VAZIO -->
+        <div id="empty-state" class="hidden text-center py-12 bg-white rounded-2xl border border-dashed border-slate-300">
+            <div class="w-14 h-14 bg-slate-100 text-slate-400 rounded-2xl flex items-center justify-center mx-auto mb-3 text-2xl"><i class="fa-regular fa-calendar-check"></i></div>
+            <h3 class="text-slate-700 font-semibold text-sm mb-1">Nenhuma atividade para <span id="empty-day-name">este dia</span></h3>
+            <p class="text-slate-400 text-xs max-w-xs mx-auto mb-4">Adicione atividades (fixas ou variáveis) para otimizar sua rotina.</p>
+            <button onclick="openActivityModal()" class="inline-flex items-center gap-2 bg-brand-50 text-brand-600 px-4 py-2 rounded-xl text-xs font-semibold hover:bg-brand-100 transition-colors">
+                <i class="fa-solid fa-plus"></i> Cadastrar Atividade
+            </button>
+        </div>
+
+        <!-- ATIVIDADES CADASTRADAS -->
+        <section id="registered-section" class="bg-white rounded-2xl border border-slate-200 shadow-sm">
+            <div class="px-4 pt-4 pb-2 flex items-center justify-between">
+                <h3 class="text-sm font-bold text-slate-700"><i class="fa-solid fa-list-check text-brand-600"></i> Atividades cadastradas neste dia</h3>
+                <span class="text-xs text-slate-400" id="registered-count"></span>
+            </div>
+            <div id="registered-list" class="divide-y divide-slate-100"></div>
+        </section>
+
+        <!-- REGRAS -->
+        <details class="bg-white rounded-2xl border border-slate-200 shadow-sm">
+            <summary class="cursor-pointer px-4 py-3 text-sm font-bold text-slate-700 flex items-center justify-between">
+                <span><i class="fa-solid fa-scale-balanced text-brand-600"></i> Como o organizador decide</span>
+                <i class="fa-solid fa-chevron-down text-slate-400 text-xs"></i>
+            </summary>
+            <ul class="px-5 pb-4 space-y-1.5 text-xs text-slate-600 list-disc list-inside" id="rules-list"></ul>
+        </details>
+    </main>
+
+    <!-- MODAL PERFIL -->
+    <div id="user-modal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+        <div class="bg-white w-full max-w-md rounded-3xl shadow-2xl overflow-hidden p-6 space-y-4">
+            <div class="flex items-center justify-between border-b border-slate-100 pb-3">
+                <h3 class="font-bold text-slate-800 text-lg flex items-center gap-2"><i class="fa-solid fa-user-gear text-brand-600"></i> Perfil e Janela Útil</h3>
+                <button onclick="closeUserModal()" class="w-8 h-8 rounded-full hover:bg-slate-100 text-slate-400 hover:text-slate-600 flex items-center justify-center"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <form id="user-form" onsubmit="saveUserProfile(event)" class="space-y-4">
+                <div>
+                    <label class="block text-xs font-semibold text-slate-600 mb-1">Nome</label>
+                    <input type="text" id="user-name" required placeholder="Seu nome" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-brand-500">
+                </div>
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-600 mb-1">Sexo</label>
+                        <select id="user-gender" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-brand-500">
+                            <option value="Masculino">Masculino</option>
+                            <option value="Feminino">Feminino</option>
+                            <option value="Outro">Outro</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-600 mb-1">Idade</label>
+                        <input type="number" id="user-age" required min="10" max="120" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-brand-500">
+                    </div>
+                </div>
+                <div class="p-3 bg-brand-50/60 rounded-2xl border border-brand-100 space-y-3">
+                    <p class="text-xs font-semibold text-brand-700"><i class="fa-solid fa-bed"></i> Ciclo Circadiano & Janela Ativa</p>
+                    <div class="grid grid-cols-2 gap-3">
+                        <div>
+                            <label class="block text-[11px] font-semibold text-slate-600 mb-1">Hora de Acordar</label>
+                            <input type="time" id="user-wake" required class="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm bg-white focus:outline-none focus:border-brand-500">
+                        </div>
+                        <div>
+                            <label class="block text-[11px] font-semibold text-slate-600 mb-1">Hora de Dormir</label>
+                            <input type="time" id="user-sleep" required class="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm bg-white focus:outline-none focus:border-brand-500">
+                        </div>
+                    </div>
+                    <div>
+                        <label class="block text-[11px] font-semibold text-slate-600 mb-1">Intervalo entre refeição e exercício (min)</label>
+                        <input type="number" id="user-digestion" min="0" max="240" step="5" class="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm bg-white focus:outline-none focus:border-brand-500">
+                    </div>
+                </div>
+                <div class="pt-2 flex justify-end gap-2">
+                    <button type="button" onclick="closeUserModal()" class="px-4 py-2 rounded-xl text-xs font-semibold border border-slate-200 text-slate-600">Cancelar</button>
+                    <button type="submit" class="px-5 py-2 rounded-xl text-xs font-semibold bg-brand-600 hover:bg-brand-700 text-white shadow-md shadow-brand-500/20">Salvar Perfil</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- MODAL ATIVIDADE -->
+    <div id="activity-modal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+        <div class="bg-white w-full max-w-lg rounded-3xl shadow-2xl overflow-hidden p-6 space-y-4 max-h-[90vh] flex flex-col">
+            <div class="flex items-center justify-between border-b border-slate-100 pb-3">
+                <h3 class="font-bold text-slate-800 text-lg flex items-center gap-2"><i class="fa-regular fa-calendar-plus text-brand-600"></i> <span id="activity-modal-title">Nova Atividade</span></h3>
+                <button onclick="closeActivityModal()" class="w-8 h-8 rounded-full hover:bg-slate-100 text-slate-400 hover:text-slate-600 flex items-center justify-center"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+
+            <form id="activity-form" onsubmit="saveActivity(event)" class="space-y-4 overflow-y-auto flex-1 pr-1">
+                <div>
+                    <label class="block text-xs font-semibold text-slate-600 mb-1">Título da Atividade <span class="text-red-500">*</span></label>
+                    <input type="text" id="act-title" required placeholder="Ex: Treino de pernas, Almoço, Estudo..." class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-brand-500">
+                </div>
+
+                <div>
+                    <label class="block text-xs font-semibold text-slate-600 mb-1">Categoria <span class="text-red-500">*</span></label>
+                    <div class="grid grid-cols-2 sm:grid-cols-3 gap-2" id="category-options"></div>
+                </div>
+
+                <!-- Tipo de horário -->
+                <div class="p-3 bg-slate-50 rounded-2xl border border-slate-200 space-y-3">
+                    <label class="block text-xs font-semibold text-slate-700">Tipo de Agendamento</label>
+                    <div class="flex items-center gap-4 flex-wrap">
+                        <label class="flex items-center gap-2 cursor-pointer text-xs font-medium text-slate-700">
+                            <input type="radio" name="timeType" value="fixed" onchange="toggleTimeTypeFields()"> Horário Fixo (exato)
+                        </label>
+                        <label class="flex items-center gap-2 cursor-pointer text-xs font-medium text-slate-700">
+                            <input type="radio" name="timeType" value="flexible" checked onchange="toggleTimeTypeFields()"> Horário Variável (sugerido)
+                        </label>
+                    </div>
+                    <div class="grid grid-cols-2 gap-3 pt-1">
+                        <div id="field-fixed-time" class="hidden">
+                            <label class="block text-[11px] font-semibold text-slate-600 mb-1">Hora de Início</label>
+                            <input type="time" id="act-fixed-time" class="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm bg-white">
+                        </div>
+                        <div>
+                            <label class="block text-[11px] font-semibold text-slate-600 mb-1">Duração total (min)</label>
+                            <input type="number" id="act-duration" required min="5" max="720" step="5" value="45" oninput="updateSplitPreview()" class="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm bg-white">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- SANDBOX: divisão do tempo -->
+                <div id="split-sandbox" class="p-3 bg-indigo-50/50 rounded-2xl border border-indigo-100 space-y-3">
+                    <label class="block text-xs font-semibold text-indigo-800"><i class="fa-solid fa-puzzle-piece"></i> Como cumprir o tempo desta atividade?</label>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        <label class="cursor-pointer">
+                            <input type="radio" name="splitMode" value="integral" checked onchange="toggleSplitFields()" class="sr-only peer">
+                            <div class="h-full p-2.5 rounded-xl border border-slate-200 bg-white peer-checked:border-indigo-500 peer-checked:bg-indigo-50 text-xs">
+                                <p class="font-semibold text-slate-700"><i class="fa-solid fa-square text-indigo-500"></i> Cumprir integral</p>
+                                <p class="text-[11px] text-slate-500 mt-0.5">Um bloco único. Se não couber onde está, é realocado inteiro em outra janela.</p>
+                            </div>
+                        </label>
+                        <label class="cursor-pointer">
+                            <input type="radio" name="splitMode" value="split" onchange="toggleSplitFields()" class="sr-only peer">
+                            <div class="h-full p-2.5 rounded-xl border border-slate-200 bg-white peer-checked:border-indigo-500 peer-checked:bg-indigo-50 text-xs">
+                                <p class="font-semibold text-slate-700"><i class="fa-solid fa-table-cells-large text-indigo-500"></i> Pode ser parcelado</p>
+                                <p class="text-[11px] text-slate-500 mt-0.5">Dividido em blocos espalhados pelo dia, com pausas entre eles.</p>
+                            </div>
+                        </label>
+                    </div>
+                    <div id="split-fields" class="hidden space-y-2">
+                        <div class="grid grid-cols-2 gap-3">
+                            <div>
+                                <label class="block text-[11px] font-semibold text-slate-600 mb-1">Bloco mínimo (min)</label>
+                                <input type="number" id="act-min-block" min="5" max="720" step="5" oninput="updateSplitPreview()" class="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm bg-white">
+                            </div>
+                            <div>
+                                <label class="block text-[11px] font-semibold text-slate-600 mb-1">Bloco máximo (min)</label>
+                                <input type="number" id="act-max-block" min="5" max="720" step="5" oninput="updateSplitPreview()" class="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm bg-white">
+                            </div>
+                        </div>
+                        <p class="text-[11px] text-indigo-700 bg-white rounded-lg px-2.5 py-1.5 border border-indigo-100" id="split-preview"></p>
+                    </div>
+                    <p id="integral-tip" class="hidden text-[11px] text-amber-700 bg-amber-50 rounded-lg px-2.5 py-1.5 border border-amber-200"></p>
+                </div>
+                <p id="fixed-note" class="hidden text-[11px] text-slate-500"><i class="fa-solid fa-circle-info"></i> Atividades de horário fixo são cumpridas integralmente no horário informado.</p>
+
+                <div>
+                    <label class="block text-xs font-semibold text-slate-600 mb-1">Dias de Aplicação</label>
+                    <div class="grid grid-cols-7 gap-1" id="act-days-options"></div>
+                </div>
+
+                <div class="pt-2 flex justify-end gap-2 border-t border-slate-100">
+                    <button type="button" onclick="closeActivityModal()" class="px-4 py-2 rounded-xl text-xs font-semibold border border-slate-200 text-slate-600">Cancelar</button>
+                    <button type="submit" id="activity-submit" class="px-5 py-2 rounded-xl text-xs font-semibold bg-brand-600 hover:bg-brand-700 text-white shadow-md shadow-brand-500/20">Adicionar Atividade</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- TOAST -->
+    <div id="toast" class="fixed top-5 right-5 z-50 transform translate-y-[-100px] opacity-0 transition-all duration-300 bg-slate-900 text-white text-xs font-medium px-4 py-3 rounded-2xl shadow-xl flex items-center gap-2">
+        <i class="fa-solid fa-circle-check text-emerald-400"></i>
+        <span id="toast-message">Notificação</span>
+    </div>
+
+    <script>
+        /* =========================================================
+           CONFIGURAÇÃO
+        ========================================================= */
+        const KEYS = {
+            profile: 'taskflow_profile',
+            acts: 'taskflow_activities_v2',
+            sched: 'taskflow_schedules_v2',
+            legacyActs: 'taskflow_activities',
+            ui: 'taskflow_ui'
+        };
+        const DAYS = ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom'];
+        const JS_DAY = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
+        const COGNITIVE = ['Trabalho', 'Estudo'];
+
+        const RULES = {
+            mealGap: 150,            // distância mínima entre refeições (min)
+            mealGapRelaxed: 90,      // usada quando o dia está apertado
+            lastMealBeforeSleep: 120,// última refeição até 2h antes de dormir
+            exerciseBeforeSleep: 120,// exercício termina até 2h antes de dormir
+            cognitiveBreak: 10,      // pausa mínima entre blocos de foco
+            minGapShown: 15          // janelas livres exibidas na linha do tempo
+        };
+
+        const DEFAULT_BLOCK = {
+            'Trabalho': { min: 30, max: 120 },
+            'Estudo': { min: 25, max: 90 },
+            'Atividade Física': { min: 20, max: 60 },
+            'Alimentação': { min: 15, max: 60 },
+            'Tempo Livre': { min: 15, max: 60 }
+        };
+
+        const dayNameMap = {
+            'Seg': 'Segunda-feira', 'Ter': 'Terça-feira', 'Qua': 'Quarta-feira', 'Qui': 'Quinta-feira',
+            'Sex': 'Sexta-feira', 'Sáb': 'Sábado', 'Dom': 'Domingo'
+        };
+
+        const categoryStyles = {
+            'Trabalho': { icon: 'fa-briefcase', color: 'text-blue-600', bg: 'bg-blue-50', border: 'border-blue-200', bar: 'bg-blue-500', label: 'Trabalho' },
+            'Estudo': { icon: 'fa-graduation-cap', color: 'text-purple-600', bg: 'bg-purple-50', border: 'border-purple-200', bar: 'bg-purple-500', label: 'Estudo' },
+            'Atividade Física': { icon: 'fa-dumbbell', color: 'text-emerald-600', bg: 'bg-emerald-50', border: 'border-emerald-200', bar: 'bg-emerald-500', label: 'Atv. Física' },
+            'Alimentação': { icon: 'fa-utensils', color: 'text-amber-600', bg: 'bg-amber-50', border: 'border-amber-200', bar: 'bg-amber-500', label: 'Alimentação' },
+            'Tempo Livre': { icon: 'fa-mug-hot', color: 'text-rose-600', bg: 'bg-rose-50', border: 'border-rose-200', bar: 'bg-rose-500', label: 'Tempo Livre / Lazer' }
+        };
+
+        /* =========================================================
+           ESTADO
+        ========================================================= */
+        let userProfile = { name: 'Gabriel', gender: 'Masculino', age: 26, wakeTime: '07:00', sleepTime: '23:00', digestionMin: 90 };
+        let activities = [];
+        let schedules = {};
+        let currentSelectedDay = JS_DAY[new Date().getDay()];
+        let editingId = null;
+
+        /* =========================================================
+           UTILITÁRIOS
+        ========================================================= */
+        function readLS(key, fallback) {
+            try { const v = localStorage.getItem(key); return v ? JSON.parse(v) : fallback; }
+            catch (e) { return fallback; }
+        }
+        function writeLS(key, value) {
+            try { localStorage.setItem(key, JSON.stringify(value)); }
+            catch (e) {
+                console.error('Erro ao salvar no localStorage:', e);
+                storageOk = false;
+                renderStorageStatus();
+                if (!storageWarned) {
+                    storageWarned = true;
+                    showToast('O navegador bloqueou o salvamento. Use o botão de exportar para não perder os dados.');
+                }
+            }
+        }
+        function esc(s) {
+            return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+        }
+        function timeToMinutes(t) {
+            if (!t) return 0;
+            const [h, m] = t.split(':').map(Number);
+            return h * 60 + m;
+        }
+        function minutesToTime(total) {
+            const h = Math.floor(total / 60) % 24;
+            const m = ((total % 60) + 60) % 60;
+            return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+        }
+        function fmtDuration(min) {
+            const h = Math.floor(min / 60), m = min % 60;
+            if (!h) return `${m} min`;
+            return m ? `${h}h${String(m).padStart(2, '0')}` : `${h}h`;
+        }
+        function overlaps(a1, a2, b1, b2) { return a1 < b2 && b1 < a2; }
+
+        // Divide a duração em blocos respeitando mínimo e máximo, evitando sobra menor que o mínimo
+        function splitPlan(duration, minB, maxB) {
+            const out = [];
+            let r = duration, guard = 0;
+            while (r > 0 && guard++ < 100) {
+                let s = Math.min(r, maxB);
+                const left = r - s;
+                if (left > 0 && left < minB) s = (r - minB >= minB) ? r - minB : r;
+                out.push(s);
+                r -= s;
+            }
+            return out;
+        }
+
+        /* =========================================================
+           MOTOR CIRCADIANO (função pura: dia + atividades + perfil)
+        ========================================================= */
+        function buildSchedule(day, allActs, profile, prevSched) {
+            const wake = timeToMinutes(profile.wakeTime);
+            let sleep = timeToMinutes(profile.sleepTime);
+            if (sleep <= wake) sleep += 1440; // dorme depois da meia-noite
+            const dig = Math.max(0, parseInt(profile.digestionMin ?? 90));
+            const norm = m => (m < wake ? m + 1440 : m);
+
+            const prevDone = new Set((prevSched?.items || []).filter(i => i.done).map(i => i.key));
+            const dayActs = allActs.filter(a => a.days.includes(day));
+
+            const occ = new Uint8Array(sleep - wake);
+            const placed = [];
+            const warnings = [];
+            const unallocated = [];
+
+            const mark = (s, e) => {
+                for (let m = Math.max(s, wake); m < Math.min(e, sleep); m++) occ[m - wake] = 1;
+            };
+            const gaps = () => {
+                const out = []; let st = null;
+                for (let i = 0; i < occ.length; i++) {
+                    if (!occ[i]) { if (st === null) st = i; }
+                    else if (st !== null) { out.push([st + wake, i + wake]); st = null; }
+                }
+                if (st !== null) out.push([st + wake, sleep]);
+                return out;
+            };
+            const meals = () => placed.filter(p => p.category === 'Alimentação');
+            const exercises = () => placed.filter(p => p.category === 'Atividade Física');
+
+            // Âncoras de refeição relativas ao relógio biológico do usuário
+            const anchors = [
+                { at: wake + 30, label: 'Café da manhã', w: 3 },
+                { at: wake + 330, label: 'Almoço', w: 3 },
+                { at: sleep - 210, label: 'Jantar', w: 3 }
+            ];
+            if (sleep - wake >= 15 * 60) anchors.splice(2, 0, { at: wake + 570, label: 'Lanche da tarde', w: 2 });
+
+            function mealHint(title) {
+                const t = title.toLowerCase();
+                if (/caf[eé]|desjejum|manh/.test(t)) return 'Café da manhã';
+                if (/almo/.test(t)) return 'Almoço';
+                if (/lanche/.test(t)) return 'Lanche da tarde';
+                if (/jant|ceia/.test(t)) return 'Jantar';
+                return null;
+            }
+
+            function mealPref(m, act) {
+                const hint = mealHint(act.title);
+                let list = hint ? anchors.filter(a => a.label === hint) : anchors;
+                if (!list.length) list = anchors;
+                if (!hint) list = list.filter(a => !meals().some(p => Math.abs(p.start - a.at) < 120));
+                if (!list.length) return 0.5;
+                return Math.max(...list.map(a => (hint ? 4 : a.w) - Math.abs(m - a.at) / 60 * 1.2));
+            }
+
+            // Preferência por minuto conforme categoria (t = horas desde que acordou, u = horas até dormir)
+            function pref(act, m) {
+                const t = (m - wake) / 60, u = (sleep - m) / 60;
+                switch (act.category) {
+                    case 'Trabalho':
+                    case 'Estudo':
+                        if (u < 1.5) return -2;      // perto de dormir: evita foco intenso
+                        if (t < 1) return 0.5;       // inércia do sono
+                        if (t < 2) return 2;
+                        if (t < 6) return 3;         // pico de alerta da manhã
+                        if (t < 6.5) return 2;
+                        if (t < 8) return 0.8;       // queda pós-almoço
+                        if (t < 11) return 2.2;      // segundo pico
+                        if (u < 3) return 0.8;
+                        return 1.5;
+                    case 'Atividade Física':
+                        if (u < 2) return -2;
+                        if (t < 0.5) return 0.5;
+                        if (t < 3) return 2;         // ativação matinal
+                        if (t >= 8.5 && t < 12) return 3; // pico de desempenho físico
+                        if (u < 3.5) return 1;
+                        return 1.2;
+                    case 'Tempo Livre':
+                        if (u <= 0.5) return 2;
+                        if (u <= 4) return 3;        // desacelerar à noite
+                        if (t >= 6 && t < 7.5) return 1.5;
+                        if (t < 3) return -0.5;
+                        return 0.8;
+                    case 'Alimentação':
+                        return mealPref(m, act);
+                }
+                return 1;
+            }
+
+            // Regras de bem-estar. tier 0 = todas, tier 1 = afrouxadas, tier 2 = encaixe forçado
+            function violates(cat, s, e, tier) {
+                if (tier >= 2) return false;
+                if (COGNITIVE.includes(cat) && tier === 0 && e > sleep - 60) return true; // foco intenso longe da hora de dormir
+                if (cat === 'Atividade Física') {
+                    if (meals().some(m => overlaps(s, e, m.end, m.end + dig))) return true; // estômago cheio
+                    if (tier === 0 && e > sleep - RULES.exerciseBeforeSleep) return true;
+                }
+                if (cat === 'Alimentação') {
+                    if (exercises().some(x => overlaps(x.start, x.end, e, e + dig))) return true;
+                    const gap = tier === 0 ? RULES.mealGap : RULES.mealGapRelaxed;
+                    if (meals().some(m => overlaps(s, e, m.start - gap, m.end + gap))) return true;
+                    if (e > sleep - (tier === 0 ? RULES.lastMealBeforeSleep : 60)) return true;
+                }
+                return false;
+            }
+
+            function score(act, s, e) {
+                let sum = 0, n = 0;
+                for (let m = s; m < e; m += 5) { sum += pref(act, m); n++; }
+                let sc = sum / Math.max(1, n);
+                if (COGNITIVE.includes(act.category)) {
+                    placed.forEach(p => {
+                        if (!COGNITIVE.includes(p.category)) return;
+                        if (p.end <= s && s - p.end < RULES.cognitiveBreak) sc -= 1.5;
+                        if (p.start >= e && p.start - e < RULES.cognitiveBreak) sc -= 1.5;
+                    });
+                }
+                // partes da mesma atividade ficam espaçadas
+                placed.forEach(p => {
+                    if (p.actId === act.id && (Math.abs(p.end - s) < 30 || Math.abs(e - p.start) < 30)) sc -= 0.6;
+                });
+                // refeição logo depois do treino é bem-vinda
+                if (act.category === 'Atividade Física' && meals().some(m => m.start >= e && m.start - e <= 90)) sc += 0.3;
+                return sc - (s - wake) / 1e5; // desempate: mais cedo
+            }
+
+            function findBest(act, size) {
+                const gs = gaps().filter(([a, b]) => b - a >= size);
+                for (let tier = 0; tier <= 2; tier++) {
+                    let best = null;
+                    gs.forEach(([a, b]) => {
+                        const cands = new Set([a, b - size]);
+                        for (let s = Math.ceil(a / 5) * 5; s + size <= b; s += 5) cands.add(s);
+                        cands.forEach(s => {
+                            const e = s + size;
+                            if (violates(act.category, s, e, tier)) return;
+                            const sc = score(act, s, e);
+                            if (!best || sc > best.sc) best = { start: s, end: e, sc, tier };
+                        });
+                    });
+                    if (best) return best;
+                }
+                return null;
+            }
+
+            function commit(act, r) {
+                mark(r.start, r.end);
+                placed.push({ actId: act.id, title: act.title, category: act.category, start: r.start, end: r.end, isFixed: false, tier: r.tier });
+            }
+
+            const largestGap = () => gaps().reduce((mx, [a, b]) => Math.max(mx, b - a), 0);
+
+            // 1) Atividades fixas
+            dayActs.filter(a => a.isFixed && !a.time).forEach(a =>
+                warnings.push(`"${a.title}" está como fixa, mas sem horário definido — edite a atividade.`));
+
+            dayActs.filter(a => a.isFixed && a.time)
+                .map(a => ({ a, s: norm(timeToMinutes(a.time)) }))
+                .sort((x, y) => x.s - y.s)
+                .forEach(({ a, s }) => {
+                    const e = s + a.duration;
+                    const clash = placed.find(p => overlaps(s, e, p.start, p.end));
+                    if (clash) warnings.push(`"${a.title}" se sobrepõe a "${clash.title}" (ambas fixas).`);
+                    if (s < wake || e > sleep) warnings.push(`"${a.title}" está fora da sua janela útil (${profile.wakeTime}–${profile.sleepTime}).`);
+                    mark(s, e);
+                    placed.push({ actId: a.id, title: a.title, category: a.category, start: s, end: e, isFixed: true, tier: 0 });
+                });
+
+            exercises().forEach(x => {
+                const m = meals().find(m => overlaps(x.start, x.end, m.end, m.end + dig));
+                if (m) warnings.push(`"${x.title}" (fixa) começa pouco depois de "${m.title}" — o ideal é esperar ${dig} min de digestão.`);
+            });
+
+            // 2) Atividades variáveis — ordem: refeições → blocos integrais (maiores primeiro, pois são os mais difíceis
+            //    de encaixar) → parceláveis (exercício → foco → lazer)
+            const group = a => a.category === 'Alimentação' ? 0 : a.category === 'Atividade Física' ? 1 : COGNITIVE.includes(a.category) ? 2 : 3;
+            const flex = dayActs.filter(a => !a.isFixed).sort((a, b) => {
+                const ma = a.category === 'Alimentação' ? 0 : 1, mb = b.category === 'Alimentação' ? 0 : 1;
+                if (ma !== mb) return ma - mb;
+                const sa = a.splittable ? 1 : 0, sb = b.splittable ? 1 : 0;
+                if (sa !== sb) return sa - sb;
+                if (!sa) return b.duration - a.duration || group(a) - group(b);
+                return group(a) - group(b) || b.duration - a.duration;
+            });
+
+            flex.forEach(act => {
+                if (!act.splittable) {
+                    const r = findBest(act, act.duration);
+                    if (r) commit(act, r);
+                    else unallocated.push({
+                        actId: act.id, title: act.title, category: act.category, missing: act.duration, total: act.duration, splittable: false,
+                        reason: `Nenhuma janela contínua de ${fmtDuration(act.duration)} livre neste dia.`
+                    });
+                    return;
+                }
+
+                const def = DEFAULT_BLOCK[act.category];
+                const minB = Math.max(5, act.minBlock || def.min);
+                const maxB = Math.max(minB, act.maxBlock || def.max);
+                let remaining = act.duration, guard = 0;
+
+                while (remaining > 0 && guard++ < 60) {
+                    const effMin = Math.min(minB, remaining);
+                    let size = Math.min(remaining, maxB);
+                    const left = remaining - size;
+                    if (left > 0 && left < minB) size = (remaining - minB >= minB) ? remaining - minB : remaining;
+
+                    let r = findBest(act, size);
+                    while (!r) {
+                        const s2 = Math.floor(Math.min(size - 5, largestGap()) / 5) * 5;
+                        if (s2 < effMin || s2 <= 0) break;
+                        size = s2;
+                        r = findBest(act, size);
+                    }
+                    if (!r) break;
+                    commit(act, r);
+                    remaining -= size;
+                }
+
+                if (remaining > 0) unallocated.push({
+                    actId: act.id, title: act.title, category: act.category, missing: remaining, total: act.duration, splittable: true,
+                    reason: `Faltaram ${fmtDuration(remaining)}: não há mais janelas livres de pelo menos ${fmtDuration(Math.min(minB, remaining))}.`
+                });
+            });
+
+            // 3) Explicação de cada bloco
+            function reasonFor(p) {
+                if (p.isFixed) return 'Horário fixo definido por você';
+                if (p.tier === 2) return 'Encaixe forçado: não havia janela que respeitasse as regras de bem-estar';
+                const t = (p.start - wake) / 60, u = (sleep - p.start) / 60;
+                const relax = p.tier === 1 ? ' (regras flexibilizadas — dia apertado)' : '';
+                switch (p.category) {
+                    case 'Trabalho':
+                    case 'Estudo':
+                        if (t >= 2 && t < 6) return 'Pico de alerta cognitivo do dia' + relax;
+                        if (t >= 8 && t < 11) return 'Segundo pico de foco (tarde)' + relax;
+                        if (t >= 6 && t < 8) return 'Pós-almoço: prefira as partes mais leves' + relax;
+                        return 'Melhor janela livre disponível' + relax;
+                    case 'Atividade Física': {
+                        const last = meals().filter(m => m.end <= p.start).sort((a, b) => b.end - a.end)[0];
+                        const parts = [];
+                        if (t >= 8.5 && t < 12) parts.push('Pico de desempenho físico');
+                        else if (t < 3) parts.push('Ativação matinal');
+                        if (last) parts.push(`${fmtDuration(p.start - last.end)} após "${last.title}" (digestão)`);
+                        return (parts.join(' · ') || 'Janela longe das refeições') + relax;
+                    }
+                    case 'Alimentação': {
+                        const a = anchors.reduce((b, x) => Math.abs(x.at - p.start) < Math.abs(b.at - p.start) ? x : b);
+                        return `Janela de ${a.label.toLowerCase()} · espaçada das outras refeições` + relax;
+                    }
+                    case 'Tempo Livre':
+                        return (u <= 4 ? 'Desacelerar antes de dormir' : 'Pausa para recarregar') + relax;
+                }
+                return '';
+            }
+
+            const byAct = {};
+            placed.forEach(p => (byAct[p.actId] = byAct[p.actId] || []).push(p));
+            const items = [];
+            Object.values(byAct).forEach(list => {
+                list.sort((a, b) => a.start - b.start).forEach((p, i) => {
+                    const key = `${p.actId}:p${i + 1}`;
+                    items.push({
+                        key, actId: p.actId, title: p.title, category: p.category,
+                        start: p.start, end: p.end, isFixed: p.isFixed, forced: p.tier === 2,
+                        part: i + 1, parts: list.length, reason: reasonFor(p), done: prevDone.has(key)
+                    });
+                });
+            });
+            items.sort((a, b) => a.start - b.start);
+
+            return { generatedAt: Date.now(), stale: false, wake, sleep, items, unallocated, warnings };
+        }
+
+        /* =========================================================
+           PERSISTÊNCIA
+        ========================================================= */
+        function normalizeAct(a) {
+            const category = DEFAULT_BLOCK[a.category] ? a.category : 'Trabalho';
+            const def = DEFAULT_BLOCK[category];
+            const duration = Math.max(5, parseInt(a.duration) || 30);
+            const isFixed = !!a.isFixed;
+            return {
+                id: a.id ?? (Date.now() + Math.random()),
+                title: String(a.title || 'Sem título'),
+                category,
+                isFixed,
+                time: isFixed ? (a.time || '') : '',
+                duration,
+                days: Array.isArray(a.days) ? a.days.filter(d => DAYS.includes(d)) : [],
+                splittable: !isFixed && (a.splittable ?? (COGNITIVE.includes(category) && duration > 120)),
+                minBlock: parseInt(a.minBlock) || def.min,
+                maxBlock: parseInt(a.maxBlock) || def.max
+            };
+        }
+
+        function defaultActivities() {
+            const wd = ['Seg', 'Ter', 'Qua', 'Qui', 'Sex'];
+            return [
+                { id: 1, title: 'Café da manhã', category: 'Alimentação', isFixed: true, time: '07:30', duration: 30, days: wd },
+                { id: 2, title: 'Projeto SaaS (foco profundo)', category: 'Trabalho', isFixed: false, duration: 240, days: wd, splittable: true, minBlock: 60, maxBlock: 120 },
+                { id: 3, title: 'Treino de força', category: 'Atividade Física', isFixed: false, duration: 60, days: ['Seg', 'Qua', 'Sex'], splittable: false },
+                { id: 4, title: 'Estudo de Algoritmos & IA', category: 'Estudo', isFixed: false, duration: 90, days: ['Seg', 'Ter', 'Qua', 'Qui'], splittable: true, minBlock: 30, maxBlock: 45 },
+                { id: 5, title: 'Almoço', category: 'Alimentação', isFixed: true, time: '12:00', duration: 60, days: wd },
+                { id: 6, title: 'Jantar', category: 'Alimentação', isFixed: false, duration: 40, days: DAYS.slice(), splittable: false },
+                { id: 7, title: 'Desconexão / Lazer', category: 'Tempo Livre', isFixed: false, duration: 45, days: wd, splittable: false }
+            ].map(normalizeAct);
+        }
+
+        function loadAll() {
+            const p = readLS(KEYS.profile, null);
+            if (p) userProfile = { ...userProfile, ...p };
+
+            let saved = readLS(KEYS.acts, null);
+            if (!saved) {
+                const legacy = readLS(KEYS.legacyActs, null); // migra a versão anterior
+                if (Array.isArray(legacy)) saved = legacy;
+            }
+            activities = Array.isArray(saved) ? saved.map(normalizeAct) : defaultActivities();
+            saveActivities();
+
+            schedules = readLS(KEYS.sched, {}) || {};
+
+            const ui = readLS(KEYS.ui, null);
+            if (ui && DAYS.includes(ui.day)) currentSelectedDay = ui.day;
+        }
+
+        /* =========================================================
+           STATUS DO ARMAZENAMENTO E BACKUP
+        ========================================================= */
+        let storageOk = true;
+        let storageWarned = false;
+
+        function checkStorage() {
+            try {
+                const k = '__taskflow_test__';
+                localStorage.setItem(k, '1');
+                storageOk = localStorage.getItem(k) === '1';
+                localStorage.removeItem(k);
+            } catch (e) {
+                storageOk = false;
+            }
+            renderStorageStatus();
+        }
+
+        function renderStorageStatus() {
+            const el = document.getElementById('storage-status');
+            if (!el) return;
+            el.className = 'hidden md:inline-flex items-center gap-1.5 text-[11px] font-medium px-2.5 py-1 rounded-full border ' +
+                (storageOk ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-red-50 text-red-700 border-red-200');
+            el.innerHTML = storageOk
+                ? '<i class="fa-solid fa-floppy-disk"></i> Salvo neste navegador'
+                : '<i class="fa-solid fa-triangle-exclamation"></i> Armazenamento bloqueado';
+            el.title = storageOk
+                ? 'Os dados ficam no localStorage deste navegador e continuam após atualizar a página.'
+                : 'Este navegador/modo não permite salvar. Os dados se perdem ao atualizar — exporte um backup.';
+        }
+
+        function exportData() {
+            const payload = {
+                app: 'taskflow', version: 2, exportedAt: new Date().toISOString(),
+                profile: userProfile, activities, schedules
+            };
+            const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `taskflow-backup-${new Date().toISOString().slice(0, 10)}.json`;
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            URL.revokeObjectURL(url);
+            showToast('Backup exportado!');
+        }
+
+        function importData(e) {
+            const file = e.target.files && e.target.files[0];
+            e.target.value = '';
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = () => {
+                try {
+                    const data = JSON.parse(reader.result);
+                    if (!data || !Array.isArray(data.activities)) throw new Error('formato inválido');
+                    if (!confirm('Substituir os dados atuais pelos do backup?')) return;
+                    if (data.profile) userProfile = { ...userProfile, ...data.profile };
+                    activities = data.activities.map(normalizeAct);
+                    schedules = data.schedules && typeof data.schedules === 'object' ? data.schedules : {};
+                    writeLS(KEYS.profile, userProfile);
+                    saveActivities();
+                    saveSchedules();
+                    updateUserUI();
+                    selectDay(currentSelectedDay);
+                    showToast('Backup importado com sucesso!');
+                } catch (err) {
+                    showToast('Arquivo de backup inválido.');
+                }
+            };
+            reader.readAsText(file);
+        }
+        function saveActivities() { writeLS(KEYS.acts, activities); }
+        function saveSchedules() { writeLS(KEYS.sched, schedules); }
+        function markStale(days) {
+            days.forEach(d => { if (schedules[d]) schedules[d].stale = true; });
+            saveSchedules();
+        }
+
+        /* =========================================================
+           INICIALIZAÇÃO
+        ========================================================= */
+        window.onload = function () {
+            loadAll();
+            checkStorage();
+            buildStaticUI();
+            updateUserUI();
+            selectDay(currentSelectedDay);
+        };
+
+        function buildStaticUI() {
+            document.getElementById('day-tabs').innerHTML = DAYS.map(d => `
+                <button onclick="selectDay('${d}')" id="day-btn-${d}" class="day-tab flex flex-col items-center py-2 px-1 rounded-xl text-xs font-semibold border transition-all">
+                    <span>${d}</span><span class="text-[10px] font-medium opacity-70" id="day-count-${d}">0</span>
+                </button>`).join('');
+
+            document.getElementById('category-options').innerHTML = Object.entries(categoryStyles).map(([cat, st], i) => `
+                <label class="cursor-pointer ${cat === 'Tempo Livre' ? 'col-span-2' : ''}">
+                    <input type="radio" name="category" value="${cat}" ${i === 0 ? 'checked' : ''} onchange="applyCategoryDefaults()" class="sr-only peer">
+                    <div class="p-2.5 rounded-xl border border-slate-200 peer-checked:${st.border.replace('200', '500')} peer-checked:${st.bg} text-slate-700 text-xs font-medium flex items-center gap-2">
+                        <i class="fa-solid ${st.icon} ${st.color}"></i> ${st.label}
+                    </div>
+                </label>`).join('');
+
+            document.getElementById('act-days-options').innerHTML = DAYS.map(d => `
+                <label class="cursor-pointer">
+                    <input type="checkbox" name="act-days" value="${d}" class="sr-only peer">
+                    <div class="py-2 text-center rounded-lg border border-slate-200 text-xs font-medium text-slate-600 peer-checked:bg-brand-600 peer-checked:text-white peer-checked:border-brand-600">${d}</div>
+                </label>`).join('');
+        }
+
+        /* =========================================================
+           PERFIL
+        ========================================================= */
+        function updateUserUI() {
+            document.getElementById('user-welcome-display').innerText = `Olá, ${userProfile.name} • ${userProfile.wakeTime} - ${userProfile.sleepTime}`;
+            document.getElementById('useful-hours-badge').innerHTML = `<i class="fa-regular fa-clock text-brand-600"></i> Dia útil: ${userProfile.wakeTime} - ${userProfile.sleepTime}`;
+            document.getElementById('user-name').value = userProfile.name;
+            document.getElementById('user-gender').value = userProfile.gender;
+            document.getElementById('user-age').value = userProfile.age;
+            document.getElementById('user-wake').value = userProfile.wakeTime;
+            document.getElementById('user-sleep').value = userProfile.sleepTime;
+            document.getElementById('user-digestion').value = userProfile.digestionMin ?? 90;
+            renderRules();
+        }
+
+        function saveUserProfile(e) {
+            e.preventDefault();
+            userProfile.name = document.getElementById('user-name').value;
+            userProfile.gender = document.getElementById('user-gender').value;
+            userProfile.age = parseInt(document.getElementById('user-age').value);
+            userProfile.wakeTime = document.getElementById('user-wake').value;
+            userProfile.sleepTime = document.getElementById('user-sleep').value;
+            userProfile.digestionMin = parseInt(document.getElementById('user-digestion').value) || 0;
+            writeLS(KEYS.profile, userProfile);
+            markStale(DAYS);
+            updateUserUI();
+            closeUserModal();
+            renderDay();
+            showToast('Perfil salvo! Reorganize os dias para aplicar.');
+        }
+
+        function renderRules() {
+            const dig = userProfile.digestionMin ?? 90;
+            const rules = [
+                `Atividades fixas são posicionadas primeiro; as variáveis se encaixam nas janelas livres entre ${userProfile.wakeTime} e ${userProfile.sleepTime}.`,
+                `Exercício físico só começa ${dig} min depois de uma refeição (estômago cheio) e termina até 2h antes de dormir.`,
+                `Refeições ficam a pelo menos 2h30 umas das outras, perto dos horários naturais (café, almoço, jantar), e a última até 2h antes de dormir. Títulos como "Almoço" ou "Jantar" fixam a refeição na janela certa.`,
+                `Trabalho e estudo vão para os picos de alerta (≈2h a 6h após acordar e o meio da tarde), evitando a queda pós-almoço e a última 1h30 antes de dormir.`,
+                `Entre blocos de foco há pelo menos ${RULES.cognitiveBreak} min de pausa.`,
+                `Atividades "integrais" ocupam um bloco único — se não couberem no melhor horário, são realocadas inteiras em outra janela. "Parceladas" são divididas entre o bloco mínimo e o máximo.`,
+                `Lazer tende a ficar no fim do dia, para desacelerar antes de dormir.`,
+                `Se o dia estiver apertado, as regras são afrouxadas e o bloco é marcado como "flexibilizado" ou "encaixe forçado".`
+            ];
+            document.getElementById('rules-list').innerHTML = rules.map(r => `<li>${esc(r)}</li>`).join('');
+        }
+
+        /* =========================================================
+           NAVEGAÇÃO E RENDERIZAÇÃO
+        ========================================================= */
+        function selectDay(dayKey) {
+            currentSelectedDay = dayKey;
+            writeLS(KEYS.ui, { day: dayKey });
+            document.querySelectorAll('.day-tab').forEach(btn => {
+                btn.classList.remove('bg-brand-600', 'text-white', 'border-brand-600', 'shadow-md');
+                btn.classList.add('bg-white', 'text-slate-600', 'border-slate-200');
+            });
+            const active = document.getElementById(`day-btn-${dayKey}`);
+            if (active) {
+                active.classList.remove('bg-white', 'text-slate-600', 'border-slate-200');
+                active.classList.add('bg-brand-600', 'text-white', 'border-brand-600', 'shadow-md');
+            }
+            document.getElementById('selected-day-title').innerText = dayNameMap[dayKey];
+            document.getElementById('empty-day-name').innerText = dayNameMap[dayKey];
+            renderDay();
+        }
+
+        function nowMinutesNormalized() {
+            const d = new Date();
+            let m = d.getHours() * 60 + d.getMinutes();
+            const wake = timeToMinutes(userProfile.wakeTime);
+            if (m < wake) m += 1440;
+            return m;
+        }
+        function isToday(day) { return JS_DAY[new Date().getDay()] === day; }
+
+        function renderDay() {
+            DAYS.forEach(d => {
+                const el = document.getElementById(`day-count-${d}`);
+                if (el) el.innerText = activities.filter(a => a.days.includes(d)).length;
+            });
+
+            const day = currentSelectedDay;
+            const dayActs = activities.filter(a => a.days.includes(day));
+            const sched = schedules[day];
+            const empty = dayActs.length === 0;
+
+            document.getElementById('empty-state').classList.toggle('hidden', !empty);
+            document.getElementById('timeline-section').classList.toggle('hidden', empty);
+            document.getElementById('registered-section').classList.toggle('hidden', empty);
+            document.getElementById('optimized-tag').classList.toggle('hidden', !(sched && !sched.stale && !empty));
+
+            if (!empty) {
+                renderTimeline(sched);
+                renderRegistered(dayActs);
+            }
+            updateStats();
+        }
+
+        function renderTimeline(sched) {
+            const wrap = document.getElementById('timeline');
+            if (!sched) {
+                wrap.innerHTML = `
+                    <div class="bg-white rounded-2xl border border-dashed border-brand-200 p-6 text-center">
+                        <i class="fa-solid fa-wand-magic-sparkles text-brand-500 text-2xl mb-2"></i>
+                        <p class="text-sm font-semibold text-slate-700">Este dia ainda não foi organizado</p>
+                        <p class="text-xs text-slate-500 mb-3">Clique em "Organizar Dia" para encaixar as atividades variáveis no melhor horário.</p>
+                        <button onclick="organizeDayFlow()" class="inline-flex items-center gap-2 bg-brand-600 text-white px-4 py-2 rounded-xl text-xs font-semibold hover:bg-brand-700"><i class="fa-solid fa-wand-magic-sparkles"></i> Organizar agora</button>
+                    </div>`;
+                return;
+            }
+
+            const today = isToday(currentSelectedDay);
+            const now = nowMinutesNormalized();
+            let html = '';
+
+            if (sched.stale) html += `
+                <div class="bg-amber-50 border border-amber-200 text-amber-800 rounded-2xl px-4 py-3 text-xs flex items-center justify-between gap-3">
+                    <span><i class="fa-solid fa-rotate"></i> Suas atividades ou horários mudaram desde a última organização.</span>
+                    <button onclick="organizeDayFlow()" class="shrink-0 bg-amber-600 hover:bg-amber-700 text-white px-3 py-1.5 rounded-lg font-semibold">Reorganizar</button>
+                </div>`;
+
+            if (sched.warnings.length) html += `
+                <div class="bg-orange-50 border border-orange-200 text-orange-800 rounded-2xl px-4 py-3 text-xs space-y-1">
+                    ${sched.warnings.map(w => `<p><i class="fa-solid fa-circle-exclamation"></i> ${esc(w)}</p>`).join('')}
+                </div>`;
+
+            html += marker('fa-sun', 'text-amber-500', 'Acordar', sched.wake);
+
+            // intercala blocos e janelas livres
+            let cursor = sched.wake;
+            const inWindow = sched.items.filter(i => i.end > sched.wake && i.start < sched.sleep);
+            const outWindow = sched.items.filter(i => !(i.end > sched.wake && i.start < sched.sleep));
+            inWindow.forEach(it => {
+                if (it.start - cursor >= RULES.minGapShown) html += gapRow(cursor, it.start);
+                html += itemRow(it, today, now);
+                cursor = Math.max(cursor, it.end);
+            });
+            if (sched.sleep - cursor >= RULES.minGapShown) html += gapRow(cursor, sched.sleep);
+
+            html += marker('fa-moon', 'text-indigo-500', 'Dormir', sched.sleep);
+
+            if (outWindow.length) {
+                html += `<p class="text-[11px] font-bold text-slate-400 uppercase tracking-wider pt-2">Fora da janela útil</p>`;
+                outWindow.forEach(it => html += itemRow(it, today, now));
+            }
+
+            if (sched.unallocated.length) {
+                html += `
+                    <div class="bg-red-50 border border-red-200 rounded-2xl p-4 space-y-2 mt-3">
+                        <p class="text-xs font-bold text-red-700"><i class="fa-solid fa-ban"></i> Não couberam no dia</p>
+                        ${sched.unallocated.map(u => `
+                            <div class="bg-white rounded-xl border border-red-100 px-3 py-2 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                                <div>
+                                    <p class="text-sm font-semibold text-slate-800">${esc(u.title)} <span class="text-xs font-medium text-red-600">— faltam ${fmtDuration(u.missing)} de ${fmtDuration(u.total)}</span></p>
+                                    <p class="text-[11px] text-slate-500">${esc(u.reason)}</p>
+                                </div>
+                                <div class="flex gap-2 shrink-0">
+                                    ${!u.splittable ? `<button onclick="allowSplit(${u.actId})" class="text-[11px] font-semibold bg-indigo-600 hover:bg-indigo-700 text-white px-2.5 py-1.5 rounded-lg"><i class="fa-solid fa-table-cells-large"></i> Permitir parcelar</button>` : ''}
+                                    <button onclick="openActivityModal(${u.actId})" class="text-[11px] font-semibold border border-slate-200 text-slate-600 px-2.5 py-1.5 rounded-lg hover:bg-slate-50">Editar</button>
+                                </div>
+                            </div>`).join('')}
+                    </div>`;
+            }
+
+            if (sched.items.some(i => i.done)) {
+                html += `<div class="text-right"><button onclick="resetDayProgress()" class="text-[11px] text-slate-400 hover:text-slate-600"><i class="fa-solid fa-arrow-rotate-left"></i> Desmarcar concluídas deste dia</button></div>`;
+            }
+
+            wrap.innerHTML = html;
+        }
+
+        function marker(icon, color, label, min) {
+            return `
+                <div class="flex items-center gap-3 px-1">
+                    <span class="w-14 text-right text-xs font-bold text-slate-500">${minutesToTime(min)}</span>
+                    <i class="fa-solid ${icon} ${color}"></i>
+                    <span class="text-xs font-semibold text-slate-500">${label}</span>
+                    <div class="flex-1 border-t border-slate-200"></div>
+                </div>`;
+        }
+
+        function gapRow(s, e) {
+            return `
+                <div class="flex items-center gap-3 px-1">
+                    <span class="w-14 text-right text-[11px] text-slate-400">${minutesToTime(s)}</span>
+                    <div class="flex-1 rounded-xl border border-dashed border-slate-300 px-3 py-1.5 text-[11px] text-slate-400">
+                        <i class="fa-regular fa-hourglass"></i> Janela livre · ${fmtDuration(e - s)} (${minutesToTime(s)}–${minutesToTime(e)})
+                    </div>
+                </div>`;
+        }
+
+        function itemRow(it, today, now) {
+            const st = categoryStyles[it.category] || categoryStyles['Trabalho'];
+            const late = today && !it.done && it.end < now;
+            return `
+                <div class="flex items-stretch gap-3">
+                    <div class="w-14 text-right pt-3 shrink-0">
+                        <p class="text-xs font-bold text-slate-700">${minutesToTime(it.start)}</p>
+                        <p class="text-[10px] text-slate-400">${minutesToTime(it.end)}</p>
+                    </div>
+                    <div class="flex-1 bg-white rounded-2xl border ${it.forced ? 'border-red-300' : st.border} shadow-sm hover:shadow-md transition-all overflow-hidden flex">
+                        <div class="w-1.5 ${st.bar} shrink-0"></div>
+                        <div class="flex-1 p-3 flex items-start gap-3">
+                            <button onclick="toggleItemDone('${it.key}')" class="mt-0.5 w-6 h-6 rounded-lg border-2 ${it.done ? 'bg-emerald-500 border-emerald-500 text-white' : 'border-slate-300 hover:border-brand-500'} flex items-center justify-center shrink-0 transition-all">
+                                ${it.done ? '<i class="fa-solid fa-check text-xs"></i>' : ''}
+                            </button>
+                            <div class="min-w-0 flex-1">
+                                <div class="flex items-center gap-2 flex-wrap">
+                                    <h4 class="font-bold text-sm ${it.done ? 'line-through text-slate-400' : 'text-slate-800'}">${esc(it.title)}</h4>
+                                    <span class="text-[10px] font-bold px-2 py-0.5 rounded-full ${st.bg} ${st.color}"><i class="fa-solid ${st.icon}"></i> ${it.category}</span>
+                                    ${it.parts > 1 ? `<span class="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-700 border border-indigo-200">Parte ${it.part}/${it.parts}</span>` : ''}
+                                    ${it.isFixed ? `<span class="text-[10px] bg-amber-50 text-amber-700 px-1.5 py-0.5 rounded border border-amber-200">Fixo</span>` : ''}
+                                    ${late ? `<span class="text-[10px] bg-red-50 text-red-600 px-1.5 py-0.5 rounded border border-red-200">Atrasada</span>` : ''}
+                                </div>
+                                <p class="text-xs text-slate-500 mt-0.5"><i class="fa-solid fa-hourglass-half text-slate-400"></i> ${fmtDuration(it.end - it.start)}</p>
+                                <p class="text-[11px] mt-1 ${it.forced ? 'text-red-600' : 'text-slate-500'}"><i class="fa-regular ${it.forced ? 'fa-face-frown' : 'fa-lightbulb'}"></i> ${esc(it.reason)}</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>`;
+        }
+
+        function renderRegistered(dayActs) {
+            document.getElementById('registered-count').innerText = `${dayActs.length} atividade${dayActs.length > 1 ? 's' : ''}`;
+            const sorted = [...dayActs].sort((a, b) => (b.isFixed - a.isFixed) || (a.time || '').localeCompare(b.time || '') || a.title.localeCompare(b.title));
+            document.getElementById('registered-list').innerHTML = sorted.map(a => {
+                const st = categoryStyles[a.category];
+                const mode = a.isFixed
+                    ? `<span class="text-[10px] bg-amber-50 text-amber-700 px-1.5 py-0.5 rounded border border-amber-200">Fixo · ${a.time || '--:--'}</span>`
+                    : `<span class="text-[10px] bg-slate-50 text-slate-600 px-1.5 py-0.5 rounded border border-slate-200">Variável</span>`;
+                const split = a.isFixed ? '' : a.splittable
+                    ? `<span class="text-[10px] bg-indigo-50 text-indigo-700 px-1.5 py-0.5 rounded border border-indigo-200">Parcelável · ${a.minBlock}–${a.maxBlock} min</span>`
+                    : `<span class="text-[10px] bg-slate-50 text-slate-600 px-1.5 py-0.5 rounded border border-slate-200">Integral</span>`;
+                return `
+                    <div class="px-4 py-2.5 flex items-center justify-between gap-3">
+                        <div class="min-w-0">
+                            <div class="flex items-center gap-2 flex-wrap">
+                                <i class="fa-solid ${st.icon} ${st.color} text-xs"></i>
+                                <span class="text-sm font-semibold text-slate-700">${esc(a.title)}</span>
+                                <span class="text-xs text-slate-400">${fmtDuration(a.duration)}</span>
+                            </div>
+                            <div class="flex items-center gap-1.5 flex-wrap mt-1">${mode}${split}<span class="text-[10px] text-slate-400">${a.days.join(' · ')}</span></div>
+                        </div>
+                        <div class="flex items-center gap-1 shrink-0">
+                            <button onclick="openActivityModal(${a.id})" class="p-2 text-slate-400 hover:text-brand-600 hover:bg-brand-50 rounded-xl" title="Editar"><i class="fa-regular fa-pen-to-square"></i></button>
+                            <button onclick="deleteActivity(${a.id})" class="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-xl" title="Excluir"><i class="fa-regular fa-trash-can"></i></button>
+                        </div>
+                    </div>`;
+            }).join('');
+        }
+
+        function updateStats() {
+            const day = currentSelectedDay;
+            const sched = schedules[day];
+            const dayActs = activities.filter(a => a.days.includes(day));
+            let completed = 0, pending = dayActs.length, overdue = 0;
+            if (sched && dayActs.length) {
+                completed = sched.items.filter(i => i.done).length;
+                pending = sched.items.length - completed;
+                overdue = sched.unallocated.length;
+                if (isToday(day)) {
+                    const now = nowMinutesNormalized();
+                    overdue += sched.items.filter(i => !i.done && i.end < now).length;
+                }
+            }
+            document.getElementById('stat-completed').innerText = completed;
+            document.getElementById('stat-pending').innerText = pending;
+            document.getElementById('stat-overdue').innerText = overdue;
+        }
+
+        /* =========================================================
+           AÇÕES
+        ========================================================= */
+        function organizeDayFlow() {
+            const day = currentSelectedDay;
+            if (!activities.some(a => a.days.includes(day))) {
+                showToast('Cadastre atividades antes de organizar!');
+                return;
+            }
+            schedules[day] = buildSchedule(day, activities, userProfile, schedules[day]);
+            saveSchedules();
+            renderDay();
+            const s = schedules[day];
+            showToast(`${s.items.length} blocos organizados${s.unallocated.length ? ` · ${s.unallocated.length} não couberam` : ''}`);
+        }
+
+        function organizeWeek() {
+            let count = 0;
+            DAYS.forEach(d => {
+                if (activities.some(a => a.days.includes(d))) {
+                    schedules[d] = buildSchedule(d, activities, userProfile, schedules[d]);
+                    count++;
+                }
+            });
+            saveSchedules();
+            renderDay();
+            showToast(count ? `${count} dias organizados!` : 'Nenhuma atividade cadastrada na semana.');
+        }
+
+        function toggleItemDone(key) {
+            const sched = schedules[currentSelectedDay];
+            const it = sched?.items.find(i => i.key === key);
+            if (!it) return;
+            it.done = !it.done;
+            saveSchedules();
+            renderDay();
+        }
+
+        function resetDayProgress() {
+            const sched = schedules[currentSelectedDay];
+            if (!sched) return;
+            sched.items.forEach(i => (i.done = false));
+            saveSchedules();
+            renderDay();
+        }
+
+        function allowSplit(id) {
+            const act = activities.find(a => a.id === id);
+            if (!act) return;
+            const def = DEFAULT_BLOCK[act.category];
+            act.splittable = true;
+            act.minBlock = act.minBlock || def.min;
+            act.maxBlock = act.maxBlock || def.max;
+            saveActivities();
+            markStale(act.days);
+            organizeDayFlow();
+        }
+
+        function deleteActivity(id) {
+            const act = activities.find(a => a.id === id);
+            if (!act || !confirm(`Excluir "${act.title}"?`)) return;
+            activities = activities.filter(a => a.id !== id);
+            Object.values(schedules).forEach(s => {
+                const before = s.items.length + s.unallocated.length;
+                s.items = s.items.filter(i => i.actId !== id);
+                s.unallocated = s.unallocated.filter(u => u.actId !== id);
+                if (before !== s.items.length + s.unallocated.length) s.stale = true;
+            });
+            saveActivities();
+            saveSchedules();
+            renderDay();
+            showToast('Atividade removida.');
+        }
+
+        /* =========================================================
+           MODAL DE ATIVIDADE
+        ========================================================= */
+        function openActivityModal(id) {
+            const form = document.getElementById('activity-form');
+            form.reset();
+            editingId = id ?? null;
+            const act = editingId != null ? activities.find(a => a.id === editingId) : null;
+
+            document.getElementById('activity-modal-title').innerText = act ? 'Editar Atividade' : 'Nova Atividade';
+            document.getElementById('activity-submit').innerText = act ? 'Salvar Alterações' : 'Adicionar Atividade';
+
+            if (act) {
+                document.getElementById('act-title').value = act.title;
+                document.querySelector(`input[name="category"][value="${act.category}"]`).checked = true;
+                document.querySelector(`input[name="timeType"][value="${act.isFixed ? 'fixed' : 'flexible'}"]`).checked = true;
+                document.getElementById('act-fixed-time').value = act.time || '';
+                document.getElementById('act-duration').value = act.duration;
+                document.querySelector(`input[name="splitMode"][value="${act.splittable ? 'split' : 'integral'}"]`).checked = true;
+                document.getElementById('act-min-block').value = act.minBlock;
+                document.getElementById('act-max-block').value = act.maxBlock;
+                document.querySelectorAll('input[name="act-days"]').forEach(cb => (cb.checked = act.days.includes(cb.value)));
+            } else {
+                applyCategoryDefaults();
+                document.querySelectorAll('input[name="act-days"]').forEach(cb => (cb.checked = cb.value === currentSelectedDay));
+            }
+
+            toggleTimeTypeFields();
+            document.getElementById('activity-modal').classList.remove('hidden');
+        }
+
+        function closeActivityModal() {
+            document.getElementById('activity-modal').classList.add('hidden');
+            editingId = null;
+        }
+
+        function applyCategoryDefaults() {
+            const cat = document.querySelector('input[name="category"]:checked').value;
+            const def = DEFAULT_BLOCK[cat];
+            document.getElementById('act-min-block').value = def.min;
+            document.getElementById('act-max-block').value = def.max;
+            updateSplitPreview();
+        }
+
+        function toggleTimeTypeFields() {
+            const isFixed = document.querySelector('input[name="timeType"]:checked').value === 'fixed';
+            document.getElementById('field-fixed-time').classList.toggle('hidden', !isFixed);
+            document.getElementById('act-fixed-time').required = isFixed;
+            document.getElementById('split-sandbox').classList.toggle('hidden', isFixed);
+            document.getElementById('fixed-note').classList.toggle('hidden', !isFixed);
+            toggleSplitFields();
+        }
+
+        function toggleSplitFields() {
+            const split = document.querySelector('input[name="splitMode"]:checked').value === 'split';
+            document.getElementById('split-fields').classList.toggle('hidden', !split);
+            updateSplitPreview();
+        }
+
+        function updateSplitPreview() {
+            const duration = parseInt(document.getElementById('act-duration').value) || 0;
+            const minB = parseInt(document.getElementById('act-min-block').value) || 5;
+            const maxB = Math.max(minB, parseInt(document.getElementById('act-max-block').value) || minB);
+            const split = document.querySelector('input[name="splitMode"]:checked')?.value === 'split';
+            const cat = document.querySelector('input[name="category"]:checked')?.value;
+            const tip = document.getElementById('integral-tip');
+
+            if (split && duration > 0) {
+                const plan = splitPlan(duration, minB, maxB);
+                document.getElementById('split-preview').innerHTML =
+                    `<i class="fa-solid fa-eye"></i> Prévia: <b>${plan.map(fmtDuration).join(' + ')}</b> (${plan.length} bloco${plan.length > 1 ? 's' : ''}). Se faltar espaço, os blocos encolhem até o mínimo.`;
+            }
+
+            const showTip = !split && COGNITIVE.includes(cat) && duration > 120;
+            tip.classList.toggle('hidden', !showTip);
+            if (showTip) tip.innerHTML = `<i class="fa-solid fa-lightbulb"></i> ${fmtDuration(duration)} sem pausa costuma reduzir o rendimento. Considere permitir o parcelamento.`;
+        }
+
+        function saveActivity(e) {
+            e.preventDefault();
+            const title = document.getElementById('act-title').value.trim();
+            const category = document.querySelector('input[name="category"]:checked').value;
+            const isFixed = document.querySelector('input[name="timeType"]:checked').value === 'fixed';
+            const time = document.getElementById('act-fixed-time').value;
+            const duration = parseInt(document.getElementById('act-duration').value);
+            const splittable = !isFixed && document.querySelector('input[name="splitMode"]:checked').value === 'split';
+            let minBlock = parseInt(document.getElementById('act-min-block').value) || DEFAULT_BLOCK[category].min;
+            let maxBlock = parseInt(document.getElementById('act-max-block').value) || DEFAULT_BLOCK[category].max;
+
+            if (isFixed && !time) { showToast('Informe a hora de início da atividade fixa.'); return; }
+            if (splittable && minBlock > maxBlock) { showToast('O bloco mínimo não pode ser maior que o máximo.'); return; }
+            if (splittable && minBlock > duration) minBlock = duration;
+
+            let days = Array.from(document.querySelectorAll('input[name="act-days"]:checked')).map(cb => cb.value);
+            if (!days.length) days = [currentSelectedDay];
+
+            const data = normalizeAct({ id: editingId ?? Date.now(), title, category, isFixed, time, duration, days, splittable, minBlock, maxBlock });
+
+            if (editingId != null) {
+                const idx = activities.findIndex(a => a.id === editingId);
+                const oldDays = idx >= 0 ? activities[idx].days : [];
+                if (idx >= 0) activities[idx] = data; else activities.push(data);
+                markStale([...new Set([...oldDays, ...days])]);
+            } else {
+                activities.push(data);
+                markStale(days);
+            }
+
+            saveActivities();
+            const wasEditing = editingId != null;
+            closeActivityModal();
+            renderDay();
+            showToast(wasEditing ? 'Atividade atualizada!' : 'Atividade adicionada!');
+        }
+
+        /* =========================================================
+           MODAL DE PERFIL / TOAST
+        ========================================================= */
+        function openUserModal() { updateUserUI(); document.getElementById('user-modal').classList.remove('hidden'); }
+        function closeUserModal() { document.getElementById('user-modal').classList.add('hidden'); }
+
+        let toastTimer = null;
+        function showToast(message) {
+            const toast = document.getElementById('toast');
+            document.getElementById('toast-message').innerText = message;
+            toast.classList.remove('translate-y-[-100px]', 'opacity-0');
+            clearTimeout(toastTimer);
+            toastTimer = setTimeout(() => toast.classList.add('translate-y-[-100px]', 'opacity-0'), 3000);
+        }
+    </script>
+</body>
+</html>
