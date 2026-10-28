@@ -117,6 +117,19 @@
             </div>
         </section>
 
+        <!-- CARGA HORÁRIA CUMPRIDA -->
+        <section class="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm">
+            <div class="flex items-end justify-between gap-3 mb-2 flex-wrap">
+                <div>
+                    <p class="text-xs font-bold text-slate-400 uppercase tracking-wider">Carga Horária Cumprida</p>
+                    <p class="text-sm text-slate-600 mt-0.5" id="workload-text">—</p>
+                </div>
+                <span class="text-2xl font-extrabold text-slate-800" id="workload-percent">0%</span>
+            </div>
+            <div class="w-full h-3.5 bg-slate-100 rounded-full overflow-hidden flex" id="workload-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"></div>
+            <div class="flex flex-wrap gap-x-4 gap-y-1 mt-2.5" id="workload-legend"></div>
+        </section>
+
         <!-- CRONOGRAMA -->
         <section id="timeline-section">
             <div id="timeline" class="space-y-2"></div>
@@ -285,8 +298,11 @@
                     <div class="grid grid-cols-7 gap-1" id="act-days-options"></div>
                 </div>
 
-                <div class="pt-2 flex justify-end gap-2 border-t border-slate-100">
+                <div class="pt-2 flex flex-wrap justify-end gap-2 border-t border-slate-100">
                     <button type="button" onclick="closeActivityModal()" class="px-4 py-2 rounded-xl text-xs font-semibold border border-slate-200 text-slate-600">Cancelar</button>
+                    <button type="submit" data-all-days="1" id="activity-submit-all" title="Salva esta atividade de segunda a domingo, com o horário e a duração definidos" class="px-4 py-2 rounded-xl text-xs font-semibold border border-brand-200 bg-brand-50 hover:bg-brand-100 text-brand-700">
+                        <i class="fa-solid fa-calendar-week"></i> Salvar para todos os dias
+                    </button>
                     <button type="submit" id="activity-submit" class="px-5 py-2 rounded-xl text-xs font-semibold bg-brand-600 hover:bg-brand-700 text-white shadow-md shadow-brand-500/20">Adicionar Atividade</button>
                 </div>
             </form>
@@ -1117,6 +1133,60 @@
             document.getElementById('stat-completed').innerText = completed;
             document.getElementById('stat-pending').innerText = pending;
             document.getElementById('stat-overdue').innerText = overdue;
+            renderWorkload(sched, dayActs);
+        }
+
+        // Barra de carga horária: minutos concluídos / minutos planejados no dia
+        function renderWorkload(sched, dayActs) {
+            const bar = document.getElementById('workload-bar');
+            const text = document.getElementById('workload-text');
+            const pctEl = document.getElementById('workload-percent');
+            const legend = document.getElementById('workload-legend');
+
+            const hasSched = sched && dayActs.length && sched.items.length;
+            // sem cronograma ainda: o total vem das atividades cadastradas
+            const total = hasSched
+                ? sched.items.reduce((s, i) => s + (i.end - i.start), 0)
+                : dayActs.reduce((s, a) => s + a.duration, 0);
+            const byCat = {};
+            let done = 0;
+            if (hasSched) {
+                sched.items.forEach(i => {
+                    const min = i.end - i.start;
+                    const c = byCat[i.category] = byCat[i.category] || { done: 0, total: 0 };
+                    c.total += min;
+                    if (i.done) { c.done += min; done += min; }
+                });
+            }
+
+            const pct = total ? Math.round(done / total * 100) : 0;
+            pctEl.innerText = `${pct}%`;
+            pctEl.className = 'text-2xl font-extrabold ' + (pct >= 100 ? 'text-emerald-600' : 'text-slate-800');
+            bar.setAttribute('aria-valuenow', pct);
+
+            if (!total) {
+                text.innerText = 'Nenhuma atividade neste dia.';
+            } else if (!hasSched) {
+                text.innerText = `0 de ${fmtDuration(total)} — organize o dia para acompanhar`;
+            } else {
+                text.innerHTML = `<b class="text-slate-800">${fmtDuration(done)}</b> de ${fmtDuration(total)} planejados` +
+                    (pct >= 100 ? ' <span class="text-emerald-600 font-semibold">· dia completo!</span>' : ` · faltam ${fmtDuration(total - done)}`);
+            }
+
+            // segmentos coloridos por categoria (só o que já foi concluído)
+            bar.innerHTML = Object.entries(byCat)
+                .filter(([, c]) => c.done > 0)
+                .map(([cat, c]) => {
+                    const st = categoryStyles[cat] || categoryStyles['Trabalho'];
+                    return `<div class="${st.bar} h-full transition-all duration-500" style="width:${c.done / total * 100}%" title="${cat}: ${fmtDuration(c.done)}"></div>`;
+                }).join('');
+
+            legend.innerHTML = Object.entries(byCat).map(([cat, c]) => {
+                const st = categoryStyles[cat] || categoryStyles['Trabalho'];
+                return `<span class="text-[11px] text-slate-500 inline-flex items-center gap-1.5">
+                    <span class="w-2.5 h-2.5 rounded-full ${st.bar}"></span>${st.label}: ${fmtDuration(c.done)} / ${fmtDuration(c.total)}
+                </span>`;
+            }).join('');
         }
 
         /* =========================================================
@@ -1286,8 +1356,12 @@
             if (splittable && minBlock > maxBlock) { showToast('O bloco mínimo não pode ser maior que o máximo.'); return; }
             if (splittable && minBlock > duration) minBlock = duration;
 
-            let days = Array.from(document.querySelectorAll('input[name="act-days"]:checked')).map(cb => cb.value);
+            const allDays = !!(e.submitter && e.submitter.dataset.allDays);
+            let days = allDays
+                ? DAYS.slice()
+                : Array.from(document.querySelectorAll('input[name="act-days"]:checked')).map(cb => cb.value);
             if (!days.length) days = [currentSelectedDay];
+            if (allDays) document.querySelectorAll('input[name="act-days"]').forEach(cb => (cb.checked = true));
 
             const data = normalizeAct({ id: editingId ?? Date.now(), title, category, isFixed, time, duration, days, splittable, minBlock, maxBlock });
 
@@ -1305,7 +1379,8 @@
             const wasEditing = editingId != null;
             closeActivityModal();
             renderDay();
-            showToast(wasEditing ? 'Atividade atualizada!' : 'Atividade adicionada!');
+            const where = allDays ? ' para todos os dias da semana' : '';
+            showToast((wasEditing ? 'Atividade atualizada' : 'Atividade adicionada') + where + '!');
         }
 
         /* =========================================================
